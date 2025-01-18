@@ -9,6 +9,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.sql.Array;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,12 +24,59 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Catalog {
 
+    private List<Table> tables;
+
+    public class Table {
+        private DbFile dbFile;
+        private String name;
+        private String pkeyField;
+
+        public Table(DbFile dbFile, String name, String pkeyField) {
+            this.dbFile = dbFile;
+            this.name = name;
+            this.pkeyField = pkeyField;
+        }
+
+        public DbFile getDbFile() {
+            return dbFile;
+        }
+
+        public void setDbFile(DbFile dbFile) {
+            this.dbFile = dbFile;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getPkeyField() {
+            return pkeyField;
+        }
+
+        public void setPkeyField(String pkeyField) {
+            this.pkeyField = pkeyField;
+        }
+
+        public String toString() {
+            return "Table{" +
+                    "dbFile=" + dbFile +
+                    ", name='" + name + '\'' +
+                    ", pkeyField='" + pkeyField + '\'' +
+                    '}';
+        }
+    }
+
     /**
      * Constructor.
      * Creates a new, empty catalog.
      */
     public Catalog() {
         // some code goes here
+        this.tables = new ArrayList<>();
     }
 
     /**
@@ -42,6 +90,18 @@ public class Catalog {
      */
     public void addTable(DbFile file, String name, String pkeyField) {
         // some code goes here
+        Table table = new Table(file, name, pkeyField);
+        for (int i = 0; i < tables.size(); i++) {
+            Table tmp = this.tables.get(i);
+            if (tmp.getName() == null) {
+                continue;
+            }
+            if (tmp.getName().equals(name) ||  tmp.getDbFile().getId() == file.getId()) {
+                this.tables.set(i, table);
+                return;
+            }
+        }
+        this.tables.add(table);
     }
 
     public void addTable(DbFile file, String name) {
@@ -65,7 +125,27 @@ public class Catalog {
      */
     public int getTableId(String name) throws NoSuchElementException {
         // some code goes here
-        return 0;
+        if (name != null) {
+            for (int i = 0; i < tables.size(); i++) {
+                Table table = tables.get(i);
+                if (table.getName() == null) {
+                    continue;
+                }
+                if (table.getName() != null && table.getName().equals(name)) {
+                    return table.getDbFile().getId();
+                }
+            }
+        }
+        throw new NoSuchElementException();
+    }
+
+    public Table getTableById(int tableId) {
+        for (Table table : tables) {
+            if (table.getDbFile().getId() == tableId) {
+                return table;
+            }
+        }
+        return null;
     }
 
     /**
@@ -76,7 +156,11 @@ public class Catalog {
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        Table table = getTableById(tableid);
+        if (table != null) {
+            return table.getDbFile().getTupleDesc();
+        }
+        throw new NoSuchElementException();
     }
 
     /**
@@ -87,27 +171,38 @@ public class Catalog {
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        Table table = getTableById(tableid);
+        return table.getDbFile();
     }
 
     public String getPrimaryKey(int tableid) {
         // some code goes here
-        return null;
+        Table table = getTableById(tableid);
+        return table.getPkeyField();
     }
 
     public Iterator<Integer> tableIdIterator() {
         // some code goes here
-        return null;
+        List<Integer> tableIds = new ArrayList<>();
+        for (Table table : tables) {
+            tableIds.add(table.getDbFile().getId());
+        }
+        return tableIds.iterator();
     }
 
     public String getTableName(int id) {
         // some code goes here
+        Table table = getTableById(id);
+        if (table != null) {
+            return table.getName();
+        }
         return null;
     }
     
     /** Delete all tables from the catalog */
     public void clear() {
         // some code goes here
+        tables.clear();
     }
     
     /**

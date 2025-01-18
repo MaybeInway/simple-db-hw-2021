@@ -9,6 +9,8 @@ import simpledb.transaction.TransactionId;
 
 import java.io.*;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -26,12 +28,17 @@ public class BufferPool {
     /** Bytes per page, including header. */
     private static final int DEFAULT_PAGE_SIZE = 4096;
 
+    // 每一页的大小
     private static int pageSize = DEFAULT_PAGE_SIZE;
     
     /** Default number of pages passed to the constructor. This is used by
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
-    public static final int DEFAULT_PAGES = 50;
+    public static final int DEFAULT_PAGES = 50; // 默认 buffer 中保存的页数
+
+    private int numPages;
+
+    private Map<Integer, Page> buffer;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -40,6 +47,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
+        this.numPages = numPages;
+        this.buffer = new HashMap<>(numPages);
     }
     
     public static int getPageSize() {
@@ -74,7 +83,17 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        if (!this.buffer.containsKey(pid.hashCode())) {
+            DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+            Page page = dbFile.readPage(pid);
+
+            if (this.buffer.size() >= numPages) {
+                evictPage();
+            }
+            // 空间够用则继续放入page
+            this.buffer.put(pid.hashCode(), page);
+        }
+        return this.buffer.get(pid.hashCode());
     }
 
     /**

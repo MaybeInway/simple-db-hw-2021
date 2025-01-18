@@ -29,6 +29,9 @@ public class HeapPage implements Page {
     private final Byte oldDataLock= (byte) 0;
 
     /**
+     * HeapFile会读取该页的流输入, 通过该流获取该页的
+     * - 头信息
+     * - 所有tuple数据
      * Create a HeapPage from a set of bytes of data read from disk.
      * The format of a HeapPage is a set of header bytes indicating
      * the slots of the page that are in use, some number of tuple slots.
@@ -73,8 +76,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
-
+        return (int)Math.floor((BufferPool.getPageSize()*8.0)/(td.getSize()*8.0+1.0));
     }
 
     /**
@@ -84,7 +86,7 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
+        return (int) Math.ceil(getNumTuples()/8.0);
                  
     }
     
@@ -118,7 +120,7 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return this.pid;
     }
 
     /**
@@ -288,7 +290,13 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int cnt = 0;
+        for (int i = 0; i < numSlots; i++) {
+            if (((header[i / 8] >> (i % 8)) & 1) == 0) {
+                cnt++;
+            }
+        }
+        return cnt;
     }
 
     /**
@@ -296,7 +304,10 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        if (i < 0 || i >= numSlots) {
+            throw new IllegalArgumentException("Slot " + i + " out of bounds.");
+        }
+        return (header[i / 8] >> (i % 8) & 1) == 1;
     }
 
     /**
@@ -313,7 +324,13 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        List<Tuple> tuples = new ArrayList<>();
+        for (int i = 0; i < numSlots; i++) {
+            if (isSlotUsed(i)) {
+                tuples.add(this.tuples[i]);
+            }
+        }
+        return tuples.iterator();
     }
 
 }
