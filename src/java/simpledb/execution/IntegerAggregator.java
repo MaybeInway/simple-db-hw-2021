@@ -1,7 +1,13 @@
 package simpledb.execution;
 
 import simpledb.common.Type;
+import simpledb.storage.Field;
 import simpledb.storage.Tuple;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Knows how to compute some aggregate over a set of IntFields.
@@ -9,6 +15,12 @@ import simpledb.storage.Tuple;
 public class IntegerAggregator implements Aggregator {
 
     private static final long serialVersionUID = 1L;
+    private int gbfield;
+    private Type gbfieldtype;
+    private int afield;
+    private Op what;
+    private Map<Field, List<Field>> group; // 存储分组结果
+
 
     /**
      * Aggregate constructor
@@ -27,6 +39,11 @@ public class IntegerAggregator implements Aggregator {
 
     public IntegerAggregator(int gbfield, Type gbfieldtype, int afield, Op what) {
         // some code goes here
+        this.gbfield = gbfield;
+        this.gbfieldtype = gbfieldtype;
+        this.afield = afield;
+        this.what = what;
+        this.group = new HashMap<>();
     }
 
     /**
@@ -38,6 +55,19 @@ public class IntegerAggregator implements Aggregator {
      */
     public void mergeTupleIntoGroup(Tuple tup) {
         // some code goes here
+        Field aField = tup.getField(afield);
+        Field gField = null;
+        if (gbfield != NO_GROUPING) {
+            gField = tup.getField(gbfield);
+        }
+
+        if (group.containsKey(gField)) {
+            // 分组包含
+            group.get(gField).add(aField);
+        } else {
+            group.put(gField, new ArrayList<>());
+            group.get(gField).add(aField);
+        }
     }
 
     /**
@@ -50,8 +80,7 @@ public class IntegerAggregator implements Aggregator {
      */
     public OpIterator iterator() {
         // some code goes here
-        throw new
-        UnsupportedOperationException("please implement me for lab2");
+        return new AggregateIter(group,gbfield,gbfieldtype,what);
     }
 
 }
