@@ -21,7 +21,7 @@ public class JoinOptimizer {
 
     /**
      * Constructor
-     * 
+     *
      * @param p
      *            the logical plan being optimized
      * @param joins
@@ -39,7 +39,7 @@ public class JoinOptimizer {
      * inner/outer here -- because OpIterator's don't provide any cardinality
      * estimates, and stats only has information about the base tables. For this
      * reason, the plan1
-     * 
+     *
      * @param lj
      *            The join being considered
      * @param plan1
@@ -95,14 +95,14 @@ public class JoinOptimizer {
 
     /**
      * Estimate the cost of a join.
-     * 
+     *
      * The cost of the join should be calculated based on the join algorithm (or
      * algorithms) that you implemented for Lab 2. It should be a function of
      * the amount of data that must be read over the course of the query, as
      * well as the number of CPU opertions performed by your join. Assume that
      * the cost of a single predicate application is roughly 1.
-     * 
-     * 
+     *
+     *
      * @param j
      *            A LogicalJoinNode representing the join operation being
      *            performed.
@@ -118,6 +118,9 @@ public class JoinOptimizer {
      *            side of the query
      * @return An estimate of the cost of this query, in terms of cost1 and
      *         cost2
+     *
+     *         joincost(t1 join t2) = scancost(t1) + ntups(t1) x scancost(t2) //IO cost
+     * 									   + ntups(t1) x ntups(t2) //CPU cost
      */
     public double estimateJoinCost(LogicalJoinNode j, int card1, int card2,
             double cost1, double cost2) {
@@ -130,14 +133,14 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+            return cost1 + card1 * cost2 + card1 * card2;
         }
     }
 
     /**
      * Estimate the cardinality of a join. The cardinality of a join is the
      * number of tuples produced by the join.
-     * 
+     *
      * @param j
      *            A LogicalJoinNode representing the join operation being
      *            performed.
@@ -168,6 +171,9 @@ public class JoinOptimizer {
 
     /**
      * Estimate the join cardinality of two tables.
+     *
+     * @param t1pkey 表示左表是否为主键
+     * @param t2pkey 表示右表是否为主键
      * */
     public static int estimateTableJoinCardinality(Predicate.Op joinOp,
                                                    String table1Alias, String table2Alias, String field1PureName,
@@ -176,19 +182,43 @@ public class JoinOptimizer {
                                                    Map<String, Integer> tableAliasToId) {
         int card = 1;
         // some code goes here
-        return card <= 0 ? 1 : card;
+        if (joinOp.equals(Predicate.Op.EQUALS)) {
+            if (!t1pkey && !t2pkey) {
+                return Math.max(card1, card2);
+            } else if (!t2pkey) {
+                return card2;
+            } else if (!t1pkey) {
+                return card1;
+            } else {
+                return Math.min(card1, card2);
+            }
+        } else if (joinOp.equals(Predicate.Op.NOT_EQUALS)) {
+            if (!t1pkey && !t2pkey) {
+                return card1 * card2 - Math.max(card1, card2);
+            } else if (!t2pkey) {
+                return card1 * card2 - card2;
+            } else if (!t1pkey) {
+                return card1 * card2 - card1;
+            } else {
+                return card1 * card2 - Math.min(card1, card2);
+            }
+        }
+        //如果不是=或!=，是很难估计基数的
+        //输出的数量应该与输入的数量是成比例的，可以预估一个固定的分数代表range scans产生的向量叉积，比如30%
+        return (int) (card1 * card2 * 0.3);
     }
 
     /**
      * Helper method to enumerate all of the subsets of a given size of a
      * specified vector.
-     * 
+     *
      * @param v
      *            The vector whose subsets are desired
      * @param size
      *            The size of the subsets of interest
      * @return a set of all subsets of the specified size
      */
+    // 时间复杂度：O( 2^n * n)
     public <T> Set<Set<T>> enumerateSubsets(List<T> v, int size) {
         Set<Set<T>> els = new HashSet<>();
         els.add(new HashSet<>());
@@ -211,10 +241,40 @@ public class JoinOptimizer {
 
     }
 
+    public <T> Set<Set<T>> enumerateSubsets0(List<T> v, int size) {
+        Set<Set<T>> els = new HashSet<>();
+        List<Boolean> used = new ArrayList<>(); // 标记是否被使用过
+        for (int i = 0; i < v.size(); i++) {
+            used.add(false);
+        }
+        enumerateSubsetsDFS(els, v, used, size, 0, 0);
+        return els;
+    }
+
+    private <T> void enumerateSubsetsDFS(Set<Set<T>> els, List<T> v, List<Boolean> used, int size, int count, int next) {
+        if (count == size) {
+            // 满足条件, 收集答案
+            Set<T> res = new HashSet<>();
+            for (int i = 0; i < v.size(); i++) {
+                if (used.get(i)) {
+                    res.add(v.get(i));
+                }
+            }
+            els.add(res);
+            return;
+        }
+        for (int i = next; i < v.size(); i++) {
+            used.set(i, true);
+            enumerateSubsetsDFS(els, v, used, size, count + 1, i + 1);
+            used.set(i, false); // 回溯
+        }
+    }
+
     /**
      * Compute a logical, reasonably efficient join on the specified tables. See
      * PS4 for hints on how this should be implemented.
-     * 
+     * 通过该方法获取一个cost最小的查询顺序。
+     *
      * @param stats
      *            Statistics for each table involved in the join, referenced by
      *            base table names, not alias
@@ -238,7 +298,37 @@ public class JoinOptimizer {
 
         // some code goes here
         //Replace the following
-        return joins;
+        int size = joins.size();
+        PlanCache planCache = new PlanCache();
+        CostCard bestCostCard = null;
+
+        for (int i = 1; i <= size; i++) {
+            // 得到固定长度为 i 的子集, 并遍历每一个子集
+            for (Set<LogicalJoinNode> s : enumerateSubsets(joins, i)) {
+                // 遍历每一个子集， 尝试计算每一个子集的cost和card
+                double bestCost = Double.MAX_VALUE;
+                bestCostCard = new CostCard();
+
+                for (LogicalJoinNode j : s) {
+                    CostCard costCard = computeCostAndCardOfSubplan(stats, filterSelectivities, j, s, bestCost, planCache);
+
+                    if (costCard == null)   continue;
+                    if (costCard.cost < bestCost) {
+                        bestCost = costCard.cost;
+                        bestCostCard = costCard;
+                    }
+                }
+                planCache.addPlan(s, bestCostCard.cost, bestCostCard.card, bestCostCard.plan);
+            }
+        }
+
+        // 是否解释其查询计划
+        if (explain) {
+            assert bestCostCard != null;
+            printJoins(bestCostCard.plan, planCache, stats, filterSelectivities);
+        }
+        assert bestCostCard != null;
+        return bestCostCard.plan;
     }
 
     // ===================== Private Methods =================================
@@ -248,7 +338,7 @@ public class JoinOptimizer {
      * joinToRemove to joinSet (joinSet should contain joinToRemove), given that
      * all of the subsets of size joinSet.size() - 1 have already been computed
      * and stored in PlanCache pc.
-     * 
+     *
      * @param stats
      *            table stats for all of the tables, referenced by table names
      *            rather than alias (see {@link #orderJoins})
@@ -289,6 +379,7 @@ public class JoinOptimizer {
         if (this.p.getTableId(j.t2Alias) == null)
             throw new ParsingException("Unknown table " + j.t2Alias);
 
+        // 1. 获取 joinToRemove 的两个表名
         String table1Name = Database.getCatalog().getTableName(
                 this.p.getTableId(j.t1Alias));
         String table2Name = Database.getCatalog().getTableName(
@@ -303,7 +394,9 @@ public class JoinOptimizer {
         int t1card, t2card;
         boolean leftPkey, rightPkey;
 
+        // 2. 生成一个连接方案
         if (news.isEmpty()) { // base case -- both are base relations
+            // 2.1 当只有一个 joinToRemove 节点时, 该节点本身就是一个连接方案
             prevBest = new ArrayList<>();
             t1cost = stats.get(table1Name).estimateScanCost();
             t1card = stats.get(table1Name).estimateTableCardinality(
@@ -318,6 +411,7 @@ public class JoinOptimizer {
             rightPkey = table2Alias != null && isPkey(table2Alias,
                     j.f2PureName);
         } else {
+            // 2.2 当有多个节点时，先获取删除了 joinToRemove 节点后的 joinSet 的子最佳方案
             // news is not empty -- figure best way to join j to news
             prevBest = pc.getOrder(news);
 
@@ -330,8 +424,12 @@ public class JoinOptimizer {
             double prevBestCost = pc.getCost(news);
             int bestCard = pc.getCard(news);
 
+            // 然后再生成joinToRemove节点的表与子最佳方案进行连接的方案
+            // 如果joinToRemove节点左表在子最佳方案中，左表=子最佳方案，右表=joinToRemove节点右表
+            // 否则如果joinToRemove节点右表在最佳方案中，左表=joinToRemove节点左表，右表=子最佳方案
             // estimate cost of right subtree
             if (doesJoin(prevBest, table1Alias)) { // j.t1 is in prevBest
+                //当joinToRemove的t1在prevBest中
                 t1cost = prevBestCost; // left side just has cost of whatever
                                        // left
                 // subtree is
@@ -348,6 +446,7 @@ public class JoinOptimizer {
             } else if (doesJoin(prevBest, j.t2Alias)) { // j.t2 is in prevbest
                                                         // (both
                 // shouldn't be)
+                //当joinToRemove的t2在prevBest中
                 t2cost = prevBestCost; // left side just has cost of whatever
                                        // left
                 // subtree is
@@ -366,8 +465,10 @@ public class JoinOptimizer {
         }
 
         // case where prevbest is left
+        // 3. 计算当前连接方案的cost
         double cost1 = estimateJoinCost(j, t1card, t2card, t1cost, t2cost);
 
+        // 4. 交换一次join两边顺序，再计算cost，并比较两次的cost得到最佳方案
         LogicalJoinNode j2 = j.swapInnerOuter();
         double cost2 = estimateJoinCost(j2, t2card, t1card, t2cost, t1cost);
         if (cost2 < cost1) {
@@ -381,6 +482,7 @@ public class JoinOptimizer {
         if (cost1 >= bestCostSoFar)
             return null;
 
+        // 5. 生成最终结果
         CostCard cc = new CostCard();
 
         cc.card = estimateJoinCardinality(j, t1card, t2card, leftPkey,
@@ -407,7 +509,7 @@ public class JoinOptimizer {
     /**
      * Return true if field is a primary key of the specified table, false
      * otherwise
-     * 
+     *
      * @param tableAlias
      *            The alias of the table in the query
      * @param field
@@ -438,7 +540,7 @@ public class JoinOptimizer {
      * Helper function to display a Swing window with a tree representation of
      * the specified list of joins. See {@link #orderJoins}, which may want to
      * call this when the analyze flag is true.
-     * 
+     *
      * @param js
      *            the join plan to visualize
      * @param pc

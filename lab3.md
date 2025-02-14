@@ -109,6 +109,7 @@ the basic operation is as follows:
     <tt>LogicalPlan</tt> instance it has constructed.  The <tt>physicalPlan</tt> method returns a
     <tt>DBIterator</tt> object that can be used to actually run the query.
     
+
 In the exercises to come, you will implement the methods that help
 <tt>physicalPlan</tt> devise an optimal plan.
 
@@ -288,8 +289,7 @@ in <tt>TableStatsTest</tt>.
 
 #### 2.2.4 Join Cardinality
 
-Finally, observe that the cost for the join plan <tt>p</tt> above
-includes expressions of the form <tt>joincost((t1 join t2) join
+Finally, observe that the cost for the join plan <tt>p</tt> above includes expressions of the form <tt>joincost((t1 join t2) join
 t3)</tt>.  To evaluate this expression, you need some way to estimate
 the size (<tt>ntups</tt>) of <tt>t1 join t2</tt>.  This *join
 cardinality estimation* problem is harder than the filter selectivity
@@ -301,8 +301,9 @@ includes a histogram-based method for join selectivity estimation.
 While implementing your simple solution, you  should keep in mind the following:
 
 <!--  
+
   * <a name="change">The following three paragraphs are different in this version of the lab. </a> *
-  .-->
+    .-->
 *  For equality joins, when one of the attributes is a primary key, the number of tuples produced by the join cannot
    be larger than the cardinality of the non-primary key attribute.
 * For equality joins when there is no primary key, it's hard to say much about what the size of the output
@@ -442,7 +443,6 @@ allows you to find the selectivity of any predicates over a table;
 it is guaranteed to have one entry per table name in the
 <tt>FROM</tt> list.  Finally, <tt>explain</tt> specifies that you
 should output a representation of the join order for informational purposes.
-
 
 You may wish to use the helper methods and classes described above to assist
 in your implementation. Roughly, your implementation should follow
